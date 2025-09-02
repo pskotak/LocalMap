@@ -2,21 +2,20 @@
 #include "locmap.h"
 #include "grid_map/include/grid_map_core/GridMap.hpp"
 
-#define D455depth_color_max 3000.0f
+namespace locmap {
+
 #define D455HStart 160
 
-std::atomic<uint32_t> Vrtule(0);
+cv::Mat lmap_depth_image(D455H,D455W,CV_16UC1); // DEPRECATED - prevzit pointcloud z modulu vision
 
-std::atomic<bool> NewLocMap(false);
+float ObstacleDelta = 0.27; // TODO Nacitat z configu
+std::atomic<bool> UpdateGridMap(false);
+//std::atomic<uint32_t> Vrtule(0);
+
 std::atomic<bool> ShutdownLocMap(false);
 std::unique_lock<std::mutex> LocMap_lock(LocMap_mutex, std::defer_lock);
 
 cv::Mat mapgrid(GridCells,GridCells,CV_32FC1,cv::Scalar(-1e6));
-cv::Mat show_grid;
-
-cv::Mat ethgrid(GridCells,GridCells,CV_32FC1,cv::Scalar(-1e6));
-cv::Mat flat_ethgrid(GridCells,GridCells,CV_8UC3,cv::Scalar(127,127,127));
-cv::Mat show_ethgrid(GridCells,GridCells,CV_8UC3,cv::Scalar(127,127,127));
 
 typedef struct {
     float h;
@@ -25,21 +24,19 @@ typedef struct {
 } TValCell;
 TValCell vgrid[GridCells][GridCells];
 
-// Flat grid map Cell
-typedef struct {
-    bool unknown; // binarizovana neznama
-    bool free; // binarizovana volna
-    bool occupied; // binarizovana obsazena
-    bool obstacle; // volna, ale nafouknutim oznacena jako prekazka
-    bool path; // je to path?
-} TCell;
-TCell Cells[GridCells][GridCells];
+// // Flat grid map: Cells - hlavni vystup s binarizovanymi a nafouknutymi prekazkam
+// typedef struct {
+//     bool unknown; // binarizovana neznama
+//     bool free; // binarizovana volna
+//     bool occupied; // binarizovana obsazena
+//     bool obstacle; // volna, ale nafouknutim oznacena jako prekazka
+//     bool path; // je to path?
+// } TCell;
+TCell ObstacleGrid[GridCells][GridCells];
 
 grid_map::GridMap map;
 grid_map::Position mappos;
 
-// float ObstacleDelta = 0.27; // 0.05; // TODO Nacitat z configu
-// float MagnitudeThreshold = 0.95; // V jake vzdalenosti [m] od stredu robota bereme prekazky pro binarizaci histogramu // TODO Nacitat z configu
 // VFH ------------------------------------------------------------------------
 
 // Predpokladam, ze horni stred gridmapy (GridCenter,0) je SEVER, uhel 0.0 (deg i rad).
@@ -50,15 +47,10 @@ grid_map::Position mappos;
 // float StartAngle = -2.35619449; // rad (-135 deg)
 // float EndAngle = 2.35619449; // rad (135 deg)
 // float ScanStep = 0.003490659; // rad (0.2 deg)
-#define MagnitudeMax sqrt((DepthCamMaxDistM*DepthCamMaxDistM)+(DepthCamMaxDistM*DepthCamMaxDistM))
-
-std::vector<float> ScanDist;
 // int NumSteps = 1350;
-
+#define MagnitudeMax sqrt((DepthCamMaxDistM*DepthCamMaxDistM)+(DepthCamMaxDistM*DepthCamMaxDistM))
+std::vector<float> ScanDist;
 std::vector<TPoint2D> ScanPts;
-
-#define ScanHt 200
-cv::Mat showDist;
 
 TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max) {
     TPoint2D point;
@@ -71,7 +63,7 @@ TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max) 
             break;
         }
         else {
-            if (Cells[X1][Y1].obstacle) {
+            if (ObstacleGrid[X1][Y1].obstacle) {
                 point.x = X1; point.y = Y1;
                 return point;
             }
@@ -95,12 +87,11 @@ void InitLocMap() {
     map["delta"].setZero();
     map["obstacle"].setConstant(-1.0); //map["obstacle"].setZero();
 }
+
 // ============================================================================
 void UpdateLocMap() {
-    //if (UpdateGridMap && !NewLocMap) {
     if (UpdateGridMap) {
-        Vrtule++;
-
+        //Vrtule++;
         mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
 
         for(int y=0;y<GridCells;y++) {
@@ -152,12 +143,11 @@ void UpdateLocMap() {
                 }
             }
         }
-
+// Z mapgrid vynechej hodnoty mensi nez GridHeightLimitBot a od ostatnich odecti GridHeightLimitBot a vloz je do vgrid
         for (int v = 0; v < GridCells; ++v) {
             for (int u = 0; u < GridCells; ++u) {
                 float gridval = mapgrid.at<float>(u,v);
                 if (gridval < GridHeightLimitBot) {
-                    //vgrid[u][v].modified = true;
                 }
                 else {
                     gridval += -GridHeightLimitBot;
@@ -167,7 +157,8 @@ void UpdateLocMap() {
                 }
             }
         }
-
+// Pro vsechny hodnoty ve vgrid proved raycast ze stredu. Pokud ray narazi na modified, nastavi vsechny cells mezi stredem a timto bodem na free -> vznikne "laser scan"
+// vgrid[x][y].free se vyuzije k promazani binarizovanych prekazek, ktere jsou mensi nez GridHeightLimitBot
         for (int v = 0; v < GridCells; ++v) {
             for (int u = 0; u < GridCells; ++u) {
                 if (vgrid[u][v].modified) {
@@ -208,6 +199,7 @@ void UpdateLocMap() {
         grid_map::Index index;
         grid_map::Index startindex;
 
+// Aktualizovat vysky v "map" hodnotami z "vgrid", ktere jsou "modified"
         startindex = map.getStartIndex();
         index = startindex;
         for(int y=0;y<GridCells;y++) {
@@ -248,7 +240,8 @@ void UpdateLocMap() {
                 V = glm::normalize(V);
                 auto& delta = deltaLayer(X,Y);
                 auto& obstacle = obstacleLayer(X,Y);
-
+// Pro modifikovane cells spocitej normaly a vyhodnot odchylku od oblohy.
+// Pokud je odchylka vetsi nez ObstacleDelta, je to prilis kolme a je to prekazka
                 if (vgrid[x][y].modified) {
                     float Q = std::acos(glm::dot(V,sky));
                     obstacle = -1.0; // Unknown
@@ -267,6 +260,7 @@ void UpdateLocMap() {
                         obstacle = -1.0; // Unknown
                     }
                 }
+// Pokud je prislusna cell ve vgrid volna, vymaz pripadnou prekazku vypoctenou v predchozim kroku (proc?) - viz "laser scan" vyse
                 if (vgrid[x][y].free) {
                     obstacle = 0.0; // Free
                 }
@@ -274,34 +268,34 @@ void UpdateLocMap() {
             }
             index(1) = index(1)+1; if (index(1) >= GridCells) index(1) = 0;
         }
-// Get flat Grid
+// Get flat Grid do matice ObstacleGrid pro nafukovani prekazek a planovani cesty
         startindex = map.getStartIndex();
         index = startindex;
         for(int y=0;y<GridCells;y++) {
             //map.getPosition(index,position);
             index(0) = startindex(0);
             for(int x=0;x<GridCells;x++) {
-                Cells[x][y].obstacle = false; // Cell.obstacle se aktualizuje v Inflate()
-                Cells[x][y].path = false;
+                ObstacleGrid[x][y].obstacle = false; // Cell.obstacle se aktualizuje v Inflate()
+                ObstacleGrid[x][y].path = false;
                 float& obstacle = obstacleLayer(index(0), index(1));
                 //float& pathitem = pathLayer(index(0), index(1));
                 if (obstacle > 0.0) {
                     // Obstacle
-                    Cells[x][y].unknown = false;
-                    Cells[x][y].free = false;
-                    Cells[x][y].occupied = true;
+                    ObstacleGrid[x][y].unknown = false;
+                    ObstacleGrid[x][y].free = false;
+                    ObstacleGrid[x][y].occupied = true;
                 }
                 else if (obstacle < 0.0) {
                     // Unknown
-                    Cells[x][y].unknown = true;
-                    Cells[x][y].free = false;
-                    Cells[x][y].occupied = false;
+                    ObstacleGrid[x][y].unknown = true;
+                    ObstacleGrid[x][y].free = false;
+                    ObstacleGrid[x][y].occupied = false;
                 }
                 else {
                     // Free
-                    Cells[x][y].unknown = false;
-                    Cells[x][y].free = true;
-                    Cells[x][y].occupied = false;
+                    ObstacleGrid[x][y].unknown = false;
+                    ObstacleGrid[x][y].free = true;
+                    ObstacleGrid[x][y].occupied = false;
                 }
                 index(0) = index(0)+1; if (index(0) >= GridCells) index(0) = 0;
             }
@@ -315,18 +309,18 @@ void UpdateLocMap() {
 
         for (int cy=nmin; cy<nmax; cy++) {
             for (int cx=nmin; cx<nmax; cx++) {
-                TCell C = Cells[cx][cy];
+                TCell C = ObstacleGrid[cx][cy];
                 if (C.occupied) {
                     int x = 0, y = r;
                     int d = 1 - r;
                     while (y >= x) {
                         for (int i = cx - x; i <= cx + x; i++) {
-                            Cells[i][cy + y].obstacle = true;
-                            Cells[i][cy - y].obstacle = true;
+                            ObstacleGrid[i][cy + y].obstacle = true;
+                            ObstacleGrid[i][cy - y].obstacle = true;
                         }
                         for (int i = cx - y; i <= cx + y; i++) {
-                            Cells[i][cy + x].obstacle = true;
-                            Cells[i][cy - x].obstacle = true;
+                            ObstacleGrid[i][cy + x].obstacle = true;
+                            ObstacleGrid[i][cy - x].obstacle = true;
                         }
                         if (d < 0) {
                             d += 2 * x + 3;
@@ -357,3 +351,5 @@ void RunLocMap() {
     }
     std::cout << "LocMap thread ended." << std::endl;
 }
+
+} // end namespace

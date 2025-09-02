@@ -1,32 +1,43 @@
 #ifndef LOCMAP_H
 #define LOCMAP_H
 
-#include <atomic>
-#include <mutex>
-#include <opencv2/opencv.hpp>
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp> // For glm::quat
-#include <glm/gtx/euler_angles.hpp> // For glm::yawPitchRoll
-
 #include "../SayaGlobals/globals.h"
+
+namespace locmap {
 
 #define GridResolutionM 0.08f
 #define GridSizeM 8.08f
 #define GridCells 101 //(GridSizeM / GridResolutionM)
 #define GridCenter 51
+
 #define GridHeightLimitTop 0.7
+// 0.7 m nad stred depth kamery
+// - Vyssi prekazky jsou ignorovany a neobjevi se v mape
+// - Podjedeme je
 #define GridHeightLimitBot -1.5
+// 1.5 m pod stred depth kamery
+// - Nizsi prekazky jsou ignorovany a neobjevi se v mape
+// - Prejedeme je nebo koukame do diry
 
-#define GridUpscale 4.0
+extern float ObstacleDelta; // TODO Nacitat z configu
+extern std::atomic<bool> UpdateGridMap;
 
-extern std::atomic<uint32_t> Vrtule;
+// Flat grid map: Cells - hlavni vystup s binarizovanymi a nafouknutymi prekazkam
+typedef struct {
+    bool unknown; // binarizovana neznama
+    bool free; // binarizovana volna
+    bool occupied; // binarizovana obsazena
+    bool obstacle; // volna, ale nafouknutim oznacena jako prekazka
+    bool path; // je to path?
+} TCell;
+extern TCell ObstacleGrid[GridCells][GridCells];
+//extern std::atomic<uint32_t> Vrtule;
 
-extern std::atomic<bool> NewLocMap;
 extern std::atomic<bool> ShutdownLocMap;
-extern cv::Mat show_grid;
-extern cv::Mat flat_ethgrid;
-extern cv::Mat showDist;
+extern cv::Mat lmap_depth_image; // DEPRECATED - Input depth bitmap CV16C1 -> prevzit pointcloud z modulu vision
 
 extern void RunLocMap();
+
+} // end namespace
 
 #endif
