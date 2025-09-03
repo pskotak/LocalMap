@@ -285,7 +285,7 @@ void UpdateLocMap() {
                     ObstacleGrid[x][y].free = false;
                     ObstacleGrid[x][y].occupied = true;
                 }
-                else if (obstacle < 0.0) {
+                else if ((obstacle < 0.0) || std::isnan(obstacle)) {
                     // Unknown
                     ObstacleGrid[x][y].unknown = true;
                     ObstacleGrid[x][y].free = false;
