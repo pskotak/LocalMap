@@ -20,6 +20,7 @@ namespace locmap {
 // - Prejedeme je nebo koukame do diry
 
 extern float ObstacleDelta; // TODO Nacitat z configu
+extern int InflateRadius; // TODO Nacitat z configu
 extern std::atomic<bool> UpdateGridMap;
 
 // Flat grid map: Cells - hlavni vystup s binarizovanymi a nafouknutymi prekazkam
@@ -37,6 +38,8 @@ extern std::atomic<bool> ShutdownLocMap;
 extern cv::Mat lmap_depth_image; // DEPRECATED - Input depth bitmap CV16C1 -> prevzit pointcloud z modulu vision
 
 extern void RunLocMap();
+extern void SetGoal(const int Xidx, const int Yidx);
+extern void Plan();
 
 } // end namespace
 

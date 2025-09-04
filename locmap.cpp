@@ -1,4 +1,6 @@
 #include <iostream>
+#include <stack>
+
 #include "locmap.h"
 #include "grid_map/include/grid_map_core/GridMap.hpp"
 
@@ -9,6 +11,8 @@ namespace locmap {
 cv::Mat lmap_depth_image(D455H,D455W,CV_16UC1); // DEPRECATED - prevzit pointcloud z modulu vision
 
 float ObstacleDelta = 0.27; // TODO Nacitat z configu
+int InflateRadius = 2;  // TODO Nacitat z configu // 5; // Number of grid cells. Radius in meters = InflateRadius * LocMapResM
+
 std::atomic<bool> UpdateGridMap(false);
 //std::atomic<uint32_t> Vrtule(0);
 
@@ -37,46 +41,21 @@ TCell ObstacleGrid[GridCells][GridCells];
 grid_map::GridMap map;
 grid_map::Position mappos;
 
-// VFH ------------------------------------------------------------------------
+// Planner
+std::vector<TPoint2DInt> Path;
+std::vector<TPoint2DInt> AStarPath;
+bool GoalValid = false;
+glm::vec2 GoalPos;
+TPoint2DInt GoalCellIdx;
+TPoint2DInt PlanGoalIdx;
 
-// Predpokladam, ze horni stred gridmapy (GridCenter,0) je SEVER, uhel 0.0 (deg i rad).
-// TODO Je potreba zajistit korektni inicializaci Yaw na SEVER
-// T265 vraci +/- PI rad
-// Provedu virualni scan oproti aktualnimu yaw z T265
-// Scan je 270 deg, +/-135 deg, krok 0.2 deg = 1350 paprsku / binu
-// float StartAngle = -2.35619449; // rad (-135 deg)
-// float EndAngle = 2.35619449; // rad (135 deg)
-// float ScanStep = 0.003490659; // rad (0.2 deg)
-// int NumSteps = 1350;
-#define MagnitudeMax sqrt((DepthCamMaxDistM*DepthCamMaxDistM)+(DepthCamMaxDistM*DepthCamMaxDistM))
-std::vector<float> ScanDist;
-std::vector<TPoint2D> ScanPts;
+//void AStar(const TPoint2DInt& src, const TPoint2DInt& dest);
+// bool isCellFree(int X, int Y);
+// bool isValid(const std::pair<int, int>& point);
+// bool isDestination(const std::pair<int, int>& position, const std::pair<int, int>& dest);
+// double calculateHValue(const std::pair<int, int>& src, const std::pair<int, int>& dest);
 
-TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max) {
-    TPoint2D point;
-    
-    long dx =  abs(X2-X1), sx = X1<X2 ? 1 : -1;
-    long dy = -abs(Y2-Y1), sy = Y1<Y2 ? 1 : -1;
-    long err = dx+dy, e2; // error value e_xy    
-    for(;;) {
-        if ((X1 < Min) || (X1 > Max) || (Y1 < Min) || (Y1 > Max)) {
-            break;
-        }
-        else {
-            if (ObstacleGrid[X1][Y1].obstacle) {
-                point.x = X1; point.y = Y1;
-                return point;
-            }
-            e2 = 2*err;
-            if (e2 >= dy) { err += dy; X1 += sx; } // e_xy+e_x > 0
-            if (e2 <= dx) { err += dx; Y1 += sy; } // e_xy+e_y < 0
-        }
-    }
-    point.x = -X1; point.y = -Y1;
-    return point;
-}
-
-// ----------------------------------------------------------------------------
+// ============================================================================
 void InitLocMap() {
     //mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
     map = grid_map::GridMap({"h","delta","obstacle"});
@@ -302,7 +281,7 @@ void UpdateLocMap() {
             index(1) = index(1)+1; if (index(1) >= GridCells) index(1) = 0;
         }
 // Inflate
-        int InflateRadius = 2;  // TODO Nacitat z configu // 5; // Number of grid cells. Radius in meters = InflateRadius * LocMapResM
+//         int InflateRadius = 2;  // TODO Nacitat z configu // 5; // Number of grid cells. Radius in meters = InflateRadius * LocMapResM
         int r = InflateRadius;
         int nmin = r;
         int nmax = GridCells-r;
@@ -351,5 +330,257 @@ void RunLocMap() {
     }
     std::cout << "LocMap thread ended." << std::endl;
 }
+
+// ============================================================================
+struct planner_cell {
+        // Row and Column index of its parent
+        std::pair<int, int> parent;
+        // f = g + h
+        double f, g, h;
+        planner_cell()
+        : parent ( -1, -1 )
+        , f ( -1 )
+        , g ( -1 )
+        , h ( -1 ) {
+        }
+    };
+
+bool isCellFree(int X, int Y) {
+    if (X < 0) X = 0;
+    if (Y < 0) Y = 0;
+    if (X > GridCells-1) X = GridCells-1;
+    if (Y > GridCells-1) Y = GridCells-1;
+
+    return (ObstacleGrid[X][Y].obstacle == false) && (ObstacleGrid[X][Y].free == true);
+}
+
+bool isValid(const std::pair<int, int>& point) {
+    return ((point.first >= 0) && (point.first < GridCells) && (point.second >= 0) && (point.second < GridCells));
+}
+
+bool isDestination(const std::pair<int, int>& position, const std::pair<int, int>& dest) {
+    return position == dest;
+}
+
+double calculateHValue(const std::pair<int, int>& src, const std::pair<int, int>& dest) {
+    // h is estimated with the two points distance formula
+    return sqrt(pow((src.first - dest.first),2.0) + pow((src.second - dest.second),2.0));
+}
+
+void AStar(const TPoint2DInt& src, const TPoint2DInt& dest) {
+    AStarPath.clear();
+    // Create a closed list and initialise it to false which
+    // means that no cell has been included yet This closed
+    // list is implemented as a boolean 2D array
+    bool closedList[GridCells][GridCells];
+    memset(closedList, false, sizeof(closedList));
+
+    // Declare a 2D array of structure to hold the details
+    // of that cell
+    std::array<std::array<planner_cell,GridCells>,GridCells> cellDetails;
+
+    int i, j;
+    // Initialising the parameters of the starting node
+    i = src.x, j = src.y;
+    cellDetails[i][j].f = 0.0;
+    cellDetails[i][j].g = 0.0;
+    cellDetails[i][j].h = 0.0;
+    cellDetails[i][j].parent = { i, j };
+
+//          C reate an open list having information as <f, <i, j>>
+//          where f = g + h, and i, j are the row and column index of that cell
+//          Note that 0 <= i <= ROW-1 & 0 <= j <= COL-1
+//          This open list is implenented as a set of tuple.
+    std::priority_queue<std::tuple<double, int, int>, std::vector<std::tuple<double, int, int> >, std::greater<std::tuple<double, int, int>>> openList;
+    // Put the starting cell on the open list and set its 'f' as 0
+    openList.emplace(0.0, i, j);
+
+    std::pair<int, int> dp(dest.x,dest.y);
+    //std::cout << "DP: " << dp.first << "," << dp.second << std::endl;
+
+    // We set this boolean value as false as initially
+    // the destination is not reached.
+    bool AStarPathFound = false;
+    while (!openList.empty()) {
+        const std::tuple<double, int, int>& p = openList.top();
+        // Add this vertex to the closed list
+        i = std::get<1>(p); // second element of tuple
+        j = std::get<2>(p); // third element of tuple
+
+        // Remove this vertex from the open list
+        openList.pop();
+        closedList[i][j] = true;
+        /*
+            *   		Generating all the 8 successor of this cell
+            *   				N.W N N.E
+            *   				\ | /
+            *   				\ | /
+            *   				W----Cell----E
+            *   						/ | \
+            *   				/ | \
+            *   				S.W S S.E
+            *
+            *   		Cell-->Popped Cell (i, j)
+            *   		N --> North	 (i-1, j)
+            *   		S --> South	 (i+1, j)
+            *   		E --> East	 (i, j+1)
+            *   		W --> West		 (i, j-1)
+            *   		N.E--> North-East (i-1, j+1)
+            *   		N.W--> North-West (i-1, j-1)
+            *   		S.E--> South-East (i+1, j+1)
+            *   		S.W--> South-West (i+1, j-1)
+            */
+        for (int add_x = -1; add_x <= 1; add_x++) {
+            for (int add_y = -1; add_y <= 1; add_y++) {
+                std::pair<int, int> neighbour ( i + add_x, j + add_y );
+                // Only process this cell if this is a valid one
+                if (isValid(neighbour)) {
+                    // If the destination cell is the same as the current successor
+                    if (isDestination(neighbour,dp)) { // Set the Parent of the destination cell
+                        cellDetails[neighbour.first][neighbour.second].parent = { i, j };
+                        AStarPathFound = true;
+                        break;
+                    }
+                    // If the successor is already on the closed list or if it is blocked, then ignore it. Else do the following
+                    else if (!closedList[neighbour.first][neighbour.second] && isCellFree(neighbour.first,neighbour.second)) {
+                        double gNew, hNew, fNew;
+                        gNew = cellDetails[i][j].g + 1.0;
+                        hNew = calculateHValue ( neighbour,dp );
+                        fNew = gNew + hNew;
+
+                        // If it isn’t on the open list, add it to the open list. Make the current square the parent of this square.
+                        // Record the f, g, and h costs of the square cell
+                        // OR
+                        // If it is on the open list already, check to see if this path to that square is better, using 'f' cost as the measure.
+                        if (cellDetails[neighbour.first][neighbour.second].f == -1 || cellDetails[neighbour.first][neighbour.second].f > fNew) {
+                            openList.emplace(fNew, neighbour.first, neighbour.second);
+
+                            // Update the details of this cell
+                            cellDetails[neighbour.first][neighbour.second].g = gNew;
+                            cellDetails[neighbour.first][neighbour.second].h = hNew;
+                            cellDetails[neighbour.first][neighbour.second].f = fNew;
+                            cellDetails[neighbour.first][neighbour.second].parent = { i, j };
+                        }
+                    }
+                }
+            }
+            if (AStarPathFound) {
+                break;
+            }
+        }
+        if (AStarPathFound) {
+            break;
+        }
+    }
+
+    if (AStarPathFound) {
+        // Backtrack path
+        std::stack<std::pair<int, int>> iAStarPath;
+        int row = dp.first; // y
+        int col = dp.second; // x
+
+        std::pair<int, int> next_node = cellDetails[row][col].parent;
+        if ((next_node.first >= 0) && (next_node.second >= 0)) {
+            do {
+                iAStarPath.push(next_node);
+                next_node = cellDetails[row][col].parent;
+                row = next_node.first;
+                col = next_node.second;
+            } while (cellDetails[row][col].parent != next_node);
+
+            TPoint2DInt p;
+            p.x = GridCenter; p.y = GridCenter;
+            //AStarPath.push_back(p); -- Nebudeme vkladat CenterCell
+            while (!iAStarPath.empty()) {
+                std::pair<int, int> pp = iAStarPath.top();
+                iAStarPath.pop();
+                p.x = pp.first; p.y = pp.second;
+                AStarPath.push_back(p);
+            }
+            p.x = dp.first; p.y = dp.second;
+            AStarPath.push_back(p);
+        }
+    }
+}
+
+
+// #define GridResolutionM 0.08f
+// #define GridSizeM 8.08f
+// #define GridCells 101 //(GridSizeM / GridResolutionM)
+// #define GridCenter 51
+
+// ----------------------------------------------------------------------------
+void ClearPath() {
+    for(int y=0;y<GridCells;y++) {
+        for(int x=0;x<GridCells;x++) {
+            ObstacleGrid[y][x].path = false;
+        }
+    }
+}
+
+void SetGoal(const int Xidx, const int Yidx) {
+    GoalCellIdx.x = Xidx;
+    GoalCellIdx.y = Yidx;
+}
+
+int GoalSearchAttempts = ((GridCells / 2) - 1);
+
+void Plan() {
+    TPoint2DInt startpt;
+    std::vector<TPoint2DInt> pts;
+    int radius,MinIdx;
+    bool found;
+    float MinDist,D;
+
+    startpt.x = GridCenter; startpt.y = GridCenter;
+    PlanGoalIdx = GoalCellIdx; // TODO bude vyhledani nejblizhi free cell - viz CircleLim nize
+#if 1
+    radius = 2;
+    for (int attempts=0; attempts<GoalSearchAttempts; attempts++) {
+        if (!ObstacleGrid[GoalCellIdx.x][GoalCellIdx.y].free) {
+            found = false;
+            PlanGoalIdx = GoalCellIdx;
+            for (int i=0;i<50;i++) {
+                pts.clear();
+                CircleLim(PlanGoalIdx.x,PlanGoalIdx.y,radius,0,GridCells,0,GridCells,pts);
+                MinDist = 1e9; MinIdx = 100000;
+                for (int i=0;i<pts.size();i++) {
+                    if ((ObstacleGrid[pts[i].x][pts[i].y].free) || (ObstacleGrid[pts[i].x][pts[i].y].unknown)) {
+                        D = Distance2D(startpt.x,startpt.y,pts[i].x,pts[i].y);
+                        if (D < MinDist) {
+                            MinIdx = i;
+                            MinDist = D;
+                        }
+                    }
+                }
+                if (MinIdx < 100000) {
+                    PlanGoalIdx = pts[MinIdx];
+                    break;
+                }
+                else
+                    radius++;
+            }
+        }
+        AStar(startpt,PlanGoalIdx);
+        if (AStarPath.size() > 0) {
+            break;
+        }
+        else {
+            radius++;
+        }
+    }
+#else
+    AStar(startpt,PlanGoalIdx);
+#endif
+
+    if (AStarPath.size() > 0) {
+        ClearPath();
+        Path = AStarPath;
+        for (int i=0;i<Path.size();i++) {
+            ObstacleGrid[Path[i].x][Path[i].y].path = true;
+        }
+    }
+}
+
 
 } // end namespace
