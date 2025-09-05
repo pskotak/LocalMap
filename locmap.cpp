@@ -67,6 +67,14 @@ void InitLocMap() {
     map["obstacle"].setConstant(-1.0); //map["obstacle"].setZero();
 }
 
+void SetCellFree(const int X, const int Y) {
+    ObstacleGrid[X][Y].free = true;
+    ObstacleGrid[X][Y].obstacle = false;
+    ObstacleGrid[X][Y].occupied = false;
+    ObstacleGrid[X][Y].path = false;
+    ObstacleGrid[X][Y].unknown = false;
+}
+
 // ============================================================================
 void UpdateLocMap() {
     if (UpdateGridMap) {
@@ -312,6 +320,19 @@ void UpdateLocMap() {
                 }
             }
         }
+// Add 1 pixel square around center of map - robot is represented as always free space because of planner
+        SetCellFree(GridCenter-1,GridCenter-1);
+        SetCellFree(GridCenter,GridCenter-1);
+        SetCellFree(GridCenter+1,GridCenter-1);
+
+        SetCellFree(GridCenter-1,GridCenter);
+        SetCellFree(GridCenter,GridCenter);
+        SetCellFree(GridCenter+1,GridCenter);
+
+        SetCellFree(GridCenter-1,GridCenter+1);
+        SetCellFree(GridCenter,GridCenter+1);
+        SetCellFree(GridCenter+1,GridCenter+1);
+
         UpdateGridMap = false;
     }
 }
@@ -351,7 +372,8 @@ bool isCellFree(int X, int Y) {
     if (X > GridCells-1) X = GridCells-1;
     if (Y > GridCells-1) Y = GridCells-1;
 
-    return (ObstacleGrid[X][Y].obstacle == false) && (ObstacleGrid[X][Y].free == true);
+    //return (ObstacleGrid[X][Y].obstacle == false) && (ObstacleGrid[X][Y].free == true);
+    return ((ObstacleGrid[X][Y].obstacle == false) && ((ObstacleGrid[X][Y].free == true) || (ObstacleGrid[X][Y].unknown == true)));
 }
 
 bool isValid(const std::pair<int, int>& point) {
@@ -387,7 +409,7 @@ void AStar(const TPoint2DInt& src, const TPoint2DInt& dest) {
     cellDetails[i][j].h = 0.0;
     cellDetails[i][j].parent = { i, j };
 
-//          C reate an open list having information as <f, <i, j>>
+//          Create an open list having information as <f, <i, j>>
 //          where f = g + h, and i, j are the row and column index of that cell
 //          Note that 0 <= i <= ROW-1 & 0 <= j <= COL-1
 //          This open list is implenented as a set of tuple.
@@ -517,7 +539,7 @@ void SetGoal(const int Xidx, const int Yidx) {
     GoalCellIdx.y = Yidx;
 }
 
-int GoalSearchAttempts = ((GridCells / 2) - 1);
+int GoalSearchAttempts = ((GridCells / 2) + 2);
 //#define GoalMustBeFree
 
 void Plan() {
