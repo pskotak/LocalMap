@@ -503,12 +503,6 @@ void AStar(const TPoint2DInt& src, const TPoint2DInt& dest) {
     }
 }
 
-
-// #define GridResolutionM 0.08f
-// #define GridSizeM 8.08f
-// #define GridCells 101 //(GridSizeM / GridResolutionM)
-// #define GridCenter 51
-
 // ----------------------------------------------------------------------------
 void ClearPath() {
     for(int y=0;y<GridCells;y++) {
@@ -524,6 +518,7 @@ void SetGoal(const int Xidx, const int Yidx) {
 }
 
 int GoalSearchAttempts = ((GridCells / 2) - 1);
+//#define GoalMustBeFree
 
 void Plan() {
     TPoint2DInt startpt;
@@ -533,11 +528,14 @@ void Plan() {
     float MinDist,D;
 
     startpt.x = GridCenter; startpt.y = GridCenter;
-    PlanGoalIdx = GoalCellIdx; // TODO bude vyhledani nejblizhi free cell - viz CircleLim nize
+    PlanGoalIdx = GoalCellIdx; // Vyhledani nejblizhi free cell - viz CircleLim nize
 #if 1
     radius = 2;
     for (int attempts=0; attempts<GoalSearchAttempts; attempts++) {
-        if (!ObstacleGrid[GoalCellIdx.x][GoalCellIdx.y].free) {
+        //if (!ObstacleGrid[GoalCellIdx.x][GoalCellIdx.y].free) {
+#ifdef GoalMustBeFree
+        if (!((ObstacleGrid[GoalCellIdx.x][GoalCellIdx.y].free) || (ObstacleGrid[GoalCellIdx.x][GoalCellIdx.y].unknown))) {
+#endif
             found = false;
             PlanGoalIdx = GoalCellIdx;
             for (int i=0;i<50;i++) {
@@ -560,7 +558,9 @@ void Plan() {
                 else
                     radius++;
             }
+#ifdef GoalMustBeFree
         }
+#endif
         AStar(startpt,PlanGoalIdx);
         if (AStarPath.size() > 0) {
             break;
