@@ -39,7 +39,6 @@ TValCell vgrid[GridCells][GridCells];
 TCell ObstacleGrid[GridCells][GridCells];
 
 grid_map::GridMap map;
-grid_map::Position mappos;
 
 // Planner
 std::vector<TPoint2DInt> Path;
@@ -48,12 +47,6 @@ bool GoalValid = false;
 glm::vec2 GoalPos;
 TPoint2DInt GoalCellIdx;
 TPoint2DInt PlanGoalIdx;
-
-//void AStar(const TPoint2DInt& src, const TPoint2DInt& dest);
-// bool isCellFree(int X, int Y);
-// bool isValid(const std::pair<int, int>& point);
-// bool isDestination(const std::pair<int, int>& position, const std::pair<int, int>& dest);
-// double calculateHValue(const std::pair<int, int>& src, const std::pair<int, int>& dest);
 
 // ============================================================================
 void InitLocMap() {
@@ -73,6 +66,57 @@ void SetCellFree(const int X, const int Y) {
     ObstacleGrid[X][Y].occupied = false;
     ObstacleGrid[X][Y].path = false;
     ObstacleGrid[X][Y].unknown = false;
+}
+
+// TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max) {
+//     TPoint2D point;
+//
+//     long dx =  abs(X2-X1), sx = X1<X2 ? 1 : -1;
+//     long dy = -abs(Y2-Y1), sy = Y1<Y2 ? 1 : -1;
+//     long err = dx+dy, e2; // error value e_xy
+//     for(;;) {
+//         if ((X1 < Min) || (X1 > Max) || (Y1 < Min) || (Y1 > Max)) {
+//             if (X1 < Min) X1 = Min;
+//             if (X1 > Max) X1 = Max;
+//             if (Y1 < Min) Y1 = Min;
+//             if (Y1 > Max) Y1 = Max;
+//             point.x = X1; point.y = Y1;
+//             break;
+//         }
+//         else {
+//             point.x = X1; point.y = Y1;
+//             if (ObstacleGrid[X1][Y1].obstacle) {
+//                 break;
+//             }
+//             e2 = 2*err;
+//             if (e2 >= dy) { err += dy; X1 += sx; } // e_xy+e_x > 0
+//             if (e2 <= dx) { err += dx; Y1 += sy; } // e_xy+e_y < 0
+//         }
+//     }
+//     return point;
+//
+// //     point.x = -X1; point.y = -Y1;
+// //     return point;
+// }
+
+bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoint2D &point) {
+    long dx =  abs(X2-X1), sx = X1<X2 ? 1 : -1;
+    long dy = -abs(Y2-Y1), sy = Y1<Y2 ? 1 : -1;
+    long err = dx+dy, e2; // error value e_xy
+    for(;;) {
+        if ((X1 < Min) || (X1 > Max) || (Y1 < Min) || (Y1 > Max)) {
+            return false;
+        }
+        else {
+            if (ObstacleGrid[GridCells-1-Y1][X1].obstacle) {
+                point.x = X1; point.y = Y1;
+                return true;
+            }
+            e2 = 2*err;
+            if (e2 >= dy) { err += dy; X1 += sx; } // e_xy+e_x > 0
+            if (e2 <= dx) { err += dx; Y1 += sy; } // e_xy+e_y < 0
+        }
+    }
 }
 
 // ============================================================================
@@ -169,15 +213,12 @@ void UpdateLocMap() {
         }
 
 // Update ETH grid_map
-        glm::vec3 posV;
         grid_map::Index Idx;
         grid_map::Position position;
         glm::vec3 V;
         glm::vec3 sky = {0.0,1.0,0.0};
-// WARNING TODO BotOrientation, BotPos - nejsou thread safe
-        posV = BotOrientation * posV;
-        posV = posV + BotPos;
-        mappos = grid_map::Position(-BotPos.z,-BotPos.x);
+
+        grid_map::Position mappos = grid_map::Position(-BotPos.z,-BotPos.x);
         map.move(mappos);
         auto& hLayer = map["h"];
         auto& deltaLayer = map["delta"];
@@ -341,13 +382,13 @@ void UpdateLocMap() {
 void RunLocMap() {
     std::cout << "LocMap thread started." << std::endl;
     InitLocMap();
-// ----------------------------------------------------------------------------    
+// ----------------------------------------------------------------------------
     while (!ShutdownLocMap) {
         if (LocMap_lock.try_lock()) {
             UpdateLocMap();
             LocMap_lock.unlock();
         }
-        usleep(100); // TODO test        
+        usleep(100); // TODO test
     }
     std::cout << "LocMap thread ended." << std::endl;
 }

@@ -8,7 +8,7 @@ namespace locmap {
 #define GridResolutionM 0.08f
 #define GridSizeM 8.08f
 #define GridCells 101 //(GridSizeM / GridResolutionM)
-#define GridCenter 51
+#define GridCenter 50
 
 #define GridHeightLimitTop 0.7
 // 0.7 m nad stred depth kamery
@@ -37,6 +37,8 @@ extern TCell ObstacleGrid[GridCells][GridCells];
 extern std::atomic<bool> ShutdownLocMap;
 extern cv::Mat lmap_depth_image; // DEPRECATED - Input depth bitmap CV16C1 -> prevzit pointcloud z modulu vision
 
+//extern TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max);
+extern bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoint2D &point);
 extern void RunLocMap();
 extern void SetGoal(const int Xidx, const int Yidx);
 extern void Plan();
