@@ -19,6 +19,13 @@ namespace locmap {
 // - Nizsi prekazky jsou ignorovany a neobjevi se v mape
 // - Prejedeme je nebo koukame do diry
 
+// VFH
+#define AngleResDeg 5
+#define Sectors (360 / AngleResDeg) // Muai byt cele cislo
+#define AngleResRad (AngleResDeg * DegRad)
+extern float VFHisto[Sectors];
+extern float RawHisto[Sectors];
+
 extern float ObstacleDelta; // TODO Nacitat z configu
 extern int InflateRadius; // TODO Nacitat z configu
 extern std::atomic<bool> UpdateGridMap;
@@ -38,8 +45,9 @@ extern std::atomic<bool> ShutdownLocMap;
 extern cv::Mat lmap_depth_image; // DEPRECATED - Input depth bitmap CV16C1 -> prevzit pointcloud z modulu vision
 
 //extern TPoint2D BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max);
-extern bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoint2D &point);
+//extern bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoint2D &point);
 extern void RunLocMap();
+extern void CalcVFH();
 extern void SetGoal(const int Xidx, const int Yidx);
 extern void Plan();
 

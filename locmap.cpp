@@ -48,6 +48,15 @@ glm::vec2 GoalPos;
 TPoint2DInt GoalCellIdx;
 TPoint2DInt PlanGoalIdx;
 
+// VFH
+// #define AngleResDeg 5
+// #define Sectors (360 / AngleResDeg) // Muai byt cele cislo
+// #define AngleResRad (AngleResDeg * DegRad)
+
+std::vector<TPoint3D> VFPoints;
+float VFHisto[Sectors] = {0};
+float RawHisto[Sectors] = {0};
+
 // ============================================================================
 void InitLocMap() {
     //mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
@@ -58,6 +67,43 @@ void InitLocMap() {
     map["h"].setConstant(NAN);
     map["delta"].setZero();
     map["obstacle"].setConstant(-1.0); //map["obstacle"].setZero();
+
+    // Init VFH
+    TPoint3D P;
+    TPolarVector V;
+    //float A;
+
+    VFPoints.clear();
+    for (int i=GridCenter; i >= 0; i--) {
+        P.x = i; P.y = (GridCells-1);
+        V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
+        P.z = -V.Theta;
+        VFPoints.push_back(P);
+    }
+    for (int i=(GridCells-1); i >= 0; i--) {
+        P.x = 0; P.y = i;
+        V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
+        P.z = -V.Theta;
+        VFPoints.push_back(P);
+    }
+    for (int i=0; i < GridCells; i++) {
+        P.x = i; P.y = 0;
+        V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
+        P.z = -V.Theta;
+        VFPoints.push_back(P);
+    }
+    for (int i=0; i < GridCells; i++) {
+        P.x = (GridCells-1); P.y = i;
+        V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
+        P.z = -V.Theta;
+        VFPoints.push_back(P);
+    }
+    for (int i=(GridCells-1); i >= GridCenter+1; i--) {
+        P.x = i; P.y = (GridCells-1);
+        V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
+        P.z = -V.Theta;
+        VFPoints.push_back(P);
+    }
 }
 
 void SetCellFree(const int X, const int Y) {
@@ -116,6 +162,62 @@ bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoi
             if (e2 >= dy) { err += dy; X1 += sx; } // e_xy+e_x > 0
             if (e2 <= dx) { err += dx; Y1 += sy; } // e_xy+e_y < 0
         }
+    }
+}
+
+void CalcVFH() {
+    float R,A,V;
+    int Sector,X,Y,Px,Py;
+    TPoint2D P;
+//     float RawHisto[Sectors] = {0};
+
+    static int DebugCnt = 0;
+    bool PrintIt = false;
+
+    memset(RawHisto,0,sizeof(RawHisto));
+
+    if ((DebugCnt > 100) && (DebugCnt < 102)) {
+        PrintIt = true;
+    }
+    DebugCnt++;
+
+    for (int i=0; i<VFPoints.size(); i++) {
+        X = round(VFPoints[i].x); Y = round(VFPoints[i].y); A = VFPoints[i].z;
+
+        R = V = 0.0;
+        Px = -1; Py = -1;
+        if (locmap::BresenhamLimObstacle(GridCenter,GridCenter,X,GridCells-1-Y,0,GridCells-1,P)) {
+            Px = round(P.x); Py = GridCells-1-round(P.y);
+            R = Distance2D(GridCenter,GridCenter,Px,Py);
+            R = R * GridResolutionM;
+            //if (R > (GridSizeM / 2.0)) R = (GridSizeM / 2.0);
+
+            //A = VFPoints[i].z;
+//             A = atan2(Py-GridCenter, Px-GridCenter); //angle = atan2(y2 - y1, x2 - x1)
+//             A = ToAngularRangePlusMinusPi(A);
+//             Sector = std::floor(A/AngleResRad) + GridCenter;
+        }
+        Sector = std::floor(A/AngleResRad) + GridCenter;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+//         V = RawHisto[Sector];
+//         V = V + R;
+//         RawHisto[Sector] = V;
+        RawHisto[Sector] = R;
+#if 0
+        if (PrintIt) {
+            //std::cout << "[X: " << X << " Y: " << Y << "] R: " << R << " A: " << A << " Sec: " << Sector << std::endl;
+            std::cout << "[X: " << X << " Y: " << Y << "] R: " << R << " [Px: " << Px << " Py: " << Py << "]" << " A: " << A << " Sec: " << Sector << std::endl;
+            //std::cout << " X: " << X << " Y: " << Y << " A: " << A  << std::endl;
+        }
+
+#endif
+    }
+
+    for (int i=0; i<Sectors; i++) {
+        V = RawHisto[i];
+        //VFHisto[i] = std::exp(V);
+        VFHisto[i] = V*V*V;
     }
 }
 
