@@ -104,6 +104,18 @@ void InitLocMap() {
         P.z = -V.Theta;
         VFPoints.push_back(P);
     }
+
+    std::cout << "No\t" << "X\t" << "Y\t" << "Angle\t" << std::endl;
+    for (int i=0; i < VFPoints.size(); i++) {
+        std::cout << i << "\t"  << VFPoints[i].x << "\t" << VFPoints[i].y << "\t" << VFPoints[i].z << std::endl;
+    }
+
+}
+
+void ClearLocMap() {
+    map["h"].setConstant(NAN);
+    map["delta"].setZero();
+    map["obstacle"].setConstant(-1.0); //map["obstacle"].setZero();
 }
 
 void SetCellFree(const int X, const int Y) {
@@ -175,6 +187,7 @@ void CalcVFH() {
     bool PrintIt = false;
 
     memset(RawHisto,0,sizeof(RawHisto));
+    memset(VFHisto,0,sizeof(VFHisto));
 
     if ((DebugCnt > 100) && (DebugCnt < 102)) {
         PrintIt = true;
@@ -189,20 +202,11 @@ void CalcVFH() {
         if (locmap::BresenhamLimObstacle(GridCenter,GridCenter,X,GridCells-1-Y,0,GridCells-1,P)) {
             Px = round(P.x); Py = GridCells-1-round(P.y);
             R = Distance2D(GridCenter,GridCenter,Px,Py);
-            R = R * GridResolutionM;
-            //if (R > (GridSizeM / 2.0)) R = (GridSizeM / 2.0);
-
-            //A = VFPoints[i].z;
-//             A = atan2(Py-GridCenter, Px-GridCenter); //angle = atan2(y2 - y1, x2 - x1)
-//             A = ToAngularRangePlusMinusPi(A);
-//             Sector = std::floor(A/AngleResRad) + GridCenter;
+            R = R * GridResolutionM; // Vzdalenost v metrech
         }
         Sector = std::floor(A/AngleResRad) + GridCenter;
         if (Sector < 0) Sector = 0;
         if (Sector > Sectors-1) Sector = Sectors-1;
-//         V = RawHisto[Sector];
-//         V = V + R;
-//         RawHisto[Sector] = V;
         RawHisto[Sector] = R;
 #if 0
         if (PrintIt) {
@@ -216,8 +220,15 @@ void CalcVFH() {
 
     for (int i=0; i<Sectors; i++) {
         V = RawHisto[i];
-        //VFHisto[i] = std::exp(V);
-        VFHisto[i] = V*V*V;
+        if (V < RobotRadius) {
+            V = 1.0;
+        }
+        else if (V > Dmax) {
+            V = 0.0;
+        }
+        else {
+            VFHisto[i] = (CoefA - CoefB * V); // - m = (CoefA - CoefB * ObstacleDistnce)
+        }
     }
 }
 
