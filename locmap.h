@@ -5,6 +5,8 @@
 
 namespace locmap {
 
+#define LocMapVersion "1.0.0"
+
 #define GridResolutionM 0.08f
 #define GridSizeM 8.08f
 #define GridCells 101 //(GridSizeM / GridResolutionM)
@@ -23,6 +25,7 @@ namespace locmap {
 #define AngleResDeg 5
 #define Sectors (360 / AngleResDeg) // Muai byt cele cislo
 #define AngleResRad (AngleResDeg * DegRad)
+#define SectorOffs  (PI / AngleResRad)
 extern float VFHisto[Sectors];
 extern float RawHisto[Sectors];
 

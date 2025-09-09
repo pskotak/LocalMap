@@ -53,12 +53,20 @@ TPoint2DInt PlanGoalIdx;
 // #define Sectors (360 / AngleResDeg) // Muai byt cele cislo
 // #define AngleResRad (AngleResDeg * DegRad)
 
-std::vector<TPoint3D> VFPoints;
+//std::vector<TPoint3D> VFPoints;
+
+typedef struct {
+    float x,y,angle;
+    int sector;
+} TPointVFH;
+std::vector<TPointVFH> VFPoints;
 float VFHisto[Sectors] = {0};
 float RawHisto[Sectors] = {0};
 
 // ============================================================================
 void InitLocMap() {
+    int Sector;
+
     //mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
     map = grid_map::GridMap({"h","delta","obstacle"});
     map.setFrameId("map");
@@ -69,7 +77,7 @@ void InitLocMap() {
     map["obstacle"].setConstant(-1.0); //map["obstacle"].setZero();
 
     // Init VFH
-    TPoint3D P;
+    TPointVFH P;
     TPolarVector V;
     //float A;
 
@@ -77,37 +85,57 @@ void InitLocMap() {
     for (int i=GridCenter; i >= 0; i--) {
         P.x = i; P.y = (GridCells-1);
         V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
-        P.z = -V.Theta;
+        P.angle = -V.Theta;
+        Sector = std::floor(P.angle / AngleResRad) + SectorOffs;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+        P.sector = Sector;
         VFPoints.push_back(P);
     }
     for (int i=(GridCells-1); i >= 0; i--) {
         P.x = 0; P.y = i;
         V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
-        P.z = -V.Theta;
+        P.angle = -V.Theta;
+        Sector = std::floor(P.angle / AngleResRad) + SectorOffs;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+        P.sector = Sector;
         VFPoints.push_back(P);
     }
     for (int i=0; i < GridCells; i++) {
         P.x = i; P.y = 0;
         V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
-        P.z = -V.Theta;
+        P.angle = -V.Theta;
+        Sector = std::floor(P.angle / AngleResRad) + SectorOffs;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+        P.sector = Sector;
         VFPoints.push_back(P);
     }
     for (int i=0; i < GridCells; i++) {
         P.x = (GridCells-1); P.y = i;
         V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
-        P.z = -V.Theta;
+        P.angle = -V.Theta;
+        Sector = std::floor(P.angle / AngleResRad) + SectorOffs;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+        P.sector = Sector;
         VFPoints.push_back(P);
     }
     for (int i=(GridCells-1); i >= GridCenter+1; i--) {
         P.x = i; P.y = (GridCells-1);
         V.X = GridCenter-P.y; V.Y = GridCenter-P.x; CartToPolar(&V);
-        P.z = -V.Theta;
+        P.angle = -V.Theta;
+        Sector = std::floor(P.angle / AngleResRad) + SectorOffs;
+        if (Sector < 0) Sector = 0;
+        if (Sector > Sectors-1) Sector = Sectors-1;
+        P.sector = Sector;
         VFPoints.push_back(P);
     }
 
-    std::cout << "No\t" << "X\t" << "Y\t" << "Angle\t" << std::endl;
+    std::cout << "No\t" << "X\t" << "Y\t" << "Angle\t" << "Sector" << std::endl;
     for (int i=0; i < VFPoints.size(); i++) {
-        std::cout << i << "\t"  << VFPoints[i].x << "\t" << VFPoints[i].y << "\t" << VFPoints[i].z << std::endl;
+        std::cout << i << "\t"  << VFPoints[i].x << "\t" << VFPoints[i].y << "\t" << VFPoints[i].angle << "\t" << VFPoints[i].sector << std::endl;
     }
 
 }
@@ -181,21 +209,25 @@ void CalcVFH() {
     float R,A,V;
     int Sector,X,Y,Px,Py;
     TPoint2D P;
+//	const float SectorOffs = M_PI / AngleResRad;
 //     float RawHisto[Sectors] = {0};
 
-    static int DebugCnt = 0;
-    bool PrintIt = false;
+    // static int DebugCnt = 0;
+    // bool PrintIt = false;
 
-    memset(RawHisto,0,sizeof(RawHisto));
+    //memset(RawHisto,0,sizeof(RawHisto));
+    for (int i=0; i<Sectors; i++) {
+        RawHisto[i] = 1e6;
+    }
     memset(VFHisto,0,sizeof(VFHisto));
 
-    if ((DebugCnt > 100) && (DebugCnt < 102)) {
-        PrintIt = true;
-    }
-    DebugCnt++;
+    // if ((DebugCnt > 100) && (DebugCnt < 102)) {
+    //     PrintIt = true;
+    // }
+    // DebugCnt++;
 
     for (int i=0; i<VFPoints.size(); i++) {
-        X = round(VFPoints[i].x); Y = round(VFPoints[i].y); A = VFPoints[i].z;
+        X = round(VFPoints[i].x); Y = round(VFPoints[i].y);// A = VFPoints[i].angle;
 
         R = V = 0.0;
         Px = -1; Py = -1;
@@ -204,10 +236,16 @@ void CalcVFH() {
             R = Distance2D(GridCenter,GridCenter,Px,Py);
             R = R * GridResolutionM; // Vzdalenost v metrech
         }
-        Sector = std::floor(A/AngleResRad) + GridCenter;
-        if (Sector < 0) Sector = 0;
-        if (Sector > Sectors-1) Sector = Sectors-1;
-        RawHisto[Sector] = R;
+        // Sector = std::floor(A / AngleResRad) + SectorOffs;
+        // if (Sector < 0) Sector = 0;
+        // if (Sector > Sectors-1) Sector = Sectors-1;
+        // RawHisto[Sector] = R;
+
+        // Vyhraje blizsi prekazka
+        V = RawHisto[VFPoints[i].sector];
+        if (R < V) {
+            RawHisto[VFPoints[i].sector] = R;
+        }
 #if 0
         if (PrintIt) {
             //std::cout << "[X: " << X << " Y: " << Y << "] R: " << R << " A: " << A << " Sec: " << Sector << std::endl;
