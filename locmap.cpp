@@ -6,7 +6,10 @@
 
 namespace locmap {
 
-#define D455HStart 160
+//#define LocmapPC_start 160
+int LocmapPC_start = 160;
+int LocmapPC_end = D455H-60;
+int LocmapPC_IgnoreFromLeft = 120;
 
 cv::Mat lmap_depth_image(D455H,D455W,CV_16UC1); // DEPRECATED - prevzit pointcloud z modulu vision
 
@@ -133,10 +136,10 @@ void InitLocMap() {
         VFPoints.push_back(P);
     }
 
-    std::cout << "No\t" << "X\t" << "Y\t" << "Angle\t" << "Sector" << std::endl;
-    for (int i=0; i < VFPoints.size(); i++) {
-        std::cout << i << "\t"  << VFPoints[i].x << "\t" << VFPoints[i].y << "\t" << VFPoints[i].angle << "\t" << VFPoints[i].sector << std::endl;
-    }
+//     std::cout << "No\t" << "X\t" << "Y\t" << "Angle\t" << "Sector" << std::endl;
+//     for (int i=0; i < VFPoints.size(); i++) {
+//         std::cout << i << "\t"  << VFPoints[i].x << "\t" << VFPoints[i].y << "\t" << VFPoints[i].angle << "\t" << VFPoints[i].sector << std::endl;
+//     }
 
 }
 
@@ -246,6 +249,7 @@ void CalcVFH() {
         if (R < V) {
             RawHisto[VFPoints[i].sector] = R;
         }
+//         RawHisto[VFPoints[i].sector] = R;
 #if 0
         if (PrintIt) {
             //std::cout << "[X: " << X << " Y: " << Y << "] R: " << R << " A: " << A << " Sec: " << Sector << std::endl;
@@ -258,15 +262,16 @@ void CalcVFH() {
 
     for (int i=0; i<Sectors; i++) {
         V = RawHisto[i];
-        if (V < RobotRadius) {
-            V = 1.0;
-        }
-        else if (V > Dmax) {
+        if ((V == 0.0) || (V >= Dmax)) {
             V = 0.0;
         }
-        else {
-            VFHisto[i] = (CoefA - CoefB * V); // - m = (CoefA - CoefB * ObstacleDistnce)
+        else if (V < RobotRadius) {
+            V = 1.0;
         }
+        else {
+            V = (CoefA - CoefB * V); // - m = (CoefA - CoefB * ObstacleDistnce)
+        }
+        VFHisto[i] = V;
     }
 }
 
@@ -285,8 +290,8 @@ void UpdateLocMap() {
         }
 
 // Calc pointcloud
-        for (int v = D455HStart; v < D455H; ++v) {
-            for (int u = 110; u < D455W; ++u) { // WARNING Je potreba vynechat "mrtvy" svisly pas depth dat vlevo !!!
+        for (int v = LocmapPC_start; v < LocmapPC_end; ++v) {
+            for (int u = LocmapPC_IgnoreFromLeft; u < D455W; ++u) { // WARNING Je potreba vynechat "mrtvy" svisly pas depth dat vlevo !!!
                 uint16_t depth_value_mm = lmap_depth_image.at<uint16_t>(v, u);
 
                 if (depth_value_mm == 0) continue;

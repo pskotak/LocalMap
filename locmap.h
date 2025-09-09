@@ -5,7 +5,12 @@
 
 namespace locmap {
 
-#define LocMapVersion "1.0.0"
+#define LocMapVersion "1.0.1"
+
+// Point cloud
+extern int LocmapPC_start;
+extern int LocmapPC_end;
+extern int LocmapPC_IgnoreFromLeft;
 
 #define GridResolutionM 0.08f
 #define GridSizeM 8.08f
