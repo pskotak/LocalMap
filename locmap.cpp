@@ -17,7 +17,7 @@ float ObstacleDelta = 0.27; // TODO Nacitat z configu
 int InflateRadius = 2;  // TODO Nacitat z configu // 5; // Number of grid cells. Radius in meters = InflateRadius * LocMapResM
 
 std::atomic<bool> UpdateGridMap(false);
-//std::atomic<uint32_t> Vrtule(0);
+float HeightFilterAlpha = 0.75; // Alpha = 1.0 -> pouze nove hodnoty, 0.0 -> pouze stare hodnoty
 
 std::atomic<bool> ShutdownLocMap(false);
 std::unique_lock<std::mutex> LocMap_lock(LocMap_mutex, std::defer_lock);
@@ -278,8 +278,8 @@ void CalcVFH() {
 // ============================================================================
 void UpdateLocMap() {
     if (UpdateGridMap) {
-        //Vrtule++;
-        mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
+        //mapgrid.setTo(cv::Scalar((2*GridHeightLimitBot)));
+        mapgrid.setTo(cv::Scalar(-1e6));
 
         for(int y=0;y<GridCells;y++) {
             for(int x=0;x<GridCells;x++) {
@@ -330,6 +330,7 @@ void UpdateLocMap() {
                 }
             }
         }
+/*
 // Z mapgrid vynechej hodnoty mensi nez GridHeightLimitBot a od ostatnich odecti GridHeightLimitBot a vloz je do vgrid
         for (int v = 0; v < GridCells; ++v) {
             for (int u = 0; u < GridCells; ++u) {
@@ -344,6 +345,49 @@ void UpdateLocMap() {
                 }
             }
         }
+*/
+        for (int v = 0; v < GridCells; ++v) {
+            for (int u = 0; u < GridCells; ++u) {
+                float gridval = mapgrid.at<float>(u,v);
+
+                if (gridval < -1e5) { // Vynech nemodifikovane hodnoty, ktere maji flag -1e6
+                    continue;
+                }
+
+                if (gridval < GridHeightLimitBot) {
+                    gridval = GridHeightLimitBot;
+                }
+                gridval += -GridHeightLimitBot;
+                mapgrid.at<float>(u,v) = gridval;
+                vgrid[u][v].h = gridval;
+                vgrid[u][v].modified = true;
+            }
+        }
+
+// Pro obvod gridu proved raycast ze stredu.
+// Pokud ray narazi na modified, nastavi vsechny cells mezi stredem a timto bodem na modified, protoze prekazky se pocitaji z "modified"
+// a jinak se nepromazavaji "stare" prekazky a netvori se "free" bunky.
+        int aX,aY;
+        int j,cx, cy;
+        for (int i=0; i<VFPoints.size(); i++) {
+            aX = round(VFPoints[i].x); aY = round(VFPoints[i].y);
+            std::vector<TPoint2D> bpts;
+            BresenhamLim2(GridCenter,GridCenter,aX,GridCells-1-aY,0,GridCells-1,bpts);
+            for (j=0;j<bpts.size();j++) {
+                cx = bpts[j].x; cy = bpts[j].y;
+                if (vgrid[cx][cy].modified) {
+                    for (int i=0;i<j;i++) {
+                        cx = bpts[i].x; cy = bpts[i].y;
+                        //vgrid[cx][cy].free = true;
+                        vgrid[cx][cy].modified = true;
+
+                    }
+                    //vgrid[u][v].free = false; // Pro jistotu
+                }
+            }
+        }
+
+/*
 // Pro vsechny hodnoty ve vgrid proved raycast ze stredu. Pokud ray narazi na modified, nastavi vsechny cells mezi stredem a timto bodem na free -> vznikne "laser scan"
 // vgrid[x][y].free se vyuzije k promazani binarizovanych prekazek, ktere jsou mensi nez GridHeightLimitBot
         for (int v = 0; v < GridCells; ++v) {
@@ -367,6 +411,7 @@ void UpdateLocMap() {
                 }
             }
         }
+*/
 
 // Update ETH grid_map
         grid_map::Index Idx;
@@ -382,6 +427,7 @@ void UpdateLocMap() {
 
         grid_map::Index index;
         grid_map::Index startindex;
+        float H;
 
 // Aktualizovat vysky v "map" hodnotami z "vgrid", ktere jsou "modified"
         startindex = map.getStartIndex();
@@ -390,7 +436,15 @@ void UpdateLocMap() {
             index(0) = startindex(0);
             for(int x=0;x<GridCells;x++) {
                 if (vgrid[x][y].modified) {
-                    hLayer(index(0), index(1)) = vgrid[x][y].h;
+                    //hLayer(index(0), index(1)) = vgrid[x][y].h;
+                    H = hLayer(index(0), index(1));
+                    if (std::isnan(H)) {
+                        hLayer(index(0), index(1)) = vgrid[x][y].h;
+                    }
+                    else {
+                        H = (vgrid[x][y].h * HeightFilterAlpha) + (H * (1.0 - HeightFilterAlpha));
+                        hLayer(index(0), index(1)) = H;
+                    }
                 }
                 index(0) = index(0)+1; if (index(0) >= GridCells) index(0) = 0;
             }
@@ -437,6 +491,7 @@ void UpdateLocMap() {
                         }
                         else {
                             obstacle = 0.0; // Free
+                            vgrid[x][y].free = true;
                         }
                     }
                     else {

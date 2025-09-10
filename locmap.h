@@ -37,6 +37,7 @@ extern float RawHisto[Sectors];
 extern float ObstacleDelta; // TODO Nacitat z configu
 extern int InflateRadius; // TODO Nacitat z configu
 extern std::atomic<bool> UpdateGridMap;
+extern float HeightFilterAlpha;
 
 // VFH vector magnitude m = (a - b * ObstacleDistnce) -> pri tomto nastaveni je magnitude v intervalu <0,1>
 // pokud plati
@@ -57,7 +58,6 @@ typedef struct {
     bool path; // je to path?
 } TCell;
 extern TCell ObstacleGrid[GridCells][GridCells];
-//extern std::atomic<uint32_t> Vrtule;
 
 extern std::atomic<bool> ShutdownLocMap;
 extern cv::Mat lmap_depth_image; // DEPRECATED - Input depth bitmap CV16C1 -> prevzit pointcloud z modulu vision
