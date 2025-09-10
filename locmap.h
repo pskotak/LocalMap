@@ -5,7 +5,7 @@
 
 namespace locmap {
 
-#define LocMapVersion "1.0.1"
+#define LocMapVersion "1.0.2"
 
 // Point cloud
 extern int LocmapPC_start;
@@ -48,6 +48,8 @@ extern float HeightFilterAlpha;
 #define Dmax ((GridSizeM / 2.0f) - 0.1f)
 #define CoefA (Dmax / (Dmax-RobotRadius))
 #define CoefB (CoefA / Dmax)
+
+#define CubicHeight
 
 // Flat grid map: Cells - hlavni vystup s binarizovanymi a nafouknutymi prekazkam
 typedef struct {

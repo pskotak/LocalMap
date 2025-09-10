@@ -270,6 +270,9 @@ void CalcVFH() {
         }
         else {
             V = (CoefA - CoefB * V); // - m = (CoefA - CoefB * ObstacleDistnce)
+#ifdef CubicHeight
+            V = V*V*V;
+#endif
         }
         VFHisto[i] = V;
     }
