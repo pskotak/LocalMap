@@ -66,6 +66,25 @@ std::vector<TPointVFH> VFPoints;
 float VFHisto[Sectors] = {0};
 float RawHisto[Sectors] = {0};
 
+typedef struct {
+    int LSector;
+    int RSector;
+    int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
+} TValleyVFH;
+std::vector<TValleyVFH> Valleys;
+
+int AngleToSector(const float AngleRad) {
+    int Sector = std::floor(AngleRad / AngleResRad) + SectorOffs;
+    if (Sector < 0) Sector = 0;
+    if (Sector > Sectors-1) Sector = Sectors-1;
+    return Sector;
+}
+
+float SectorToAgle(int Sector) {
+    float AngleRad = ((float) Sector - SectorOffs + 0.5) * AngleResRad;
+    return AngleRad;
+}
+
 // ============================================================================
 void InitLocMap() {
     int Sector;
@@ -208,7 +227,7 @@ bool BresenhamLimObstacle(int X1, int Y1, int X2, int Y2, int Min, int Max, TPoi
     }
 }
 
-void CalcVFH() {
+void CalcVFH() { // -----------------------------------------------------------
     float R,A,V;
     int Sector,X,Y,Px,Py;
     TPoint2D P;
@@ -276,6 +295,14 @@ void CalcVFH() {
         }
         VFHisto[i] = V;
     }
+
+    Valleys.clear();
+    TValleyVFH Valley;
+    for (int i=0; i<Sectors; i++) {
+        Valley.W = -1;
+
+    }
+
 }
 
 // ============================================================================
