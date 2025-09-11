@@ -65,12 +65,12 @@ typedef struct {
 std::vector<TPointVFH> VFPoints;
 float VFHisto[Sectors] = {0};
 float RawHisto[Sectors] = {0};
-
-typedef struct {
-    int LSector;
-    int RSector;
-    int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
-} TValleyVFH;
+float ValleyThreshold = 0.3;
+// typedef struct {
+//     int LSector;
+//     int RSector;
+//     int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
+// } TValleyVFH;
 std::vector<TValleyVFH> Valleys;
 
 int AngleToSector(const float AngleRad) {
@@ -296,13 +296,65 @@ void CalcVFH() { // -----------------------------------------------------------
         VFHisto[i] = V;
     }
 
+
+// typedef struct {
+//     int LSector;
+//     int RSector;
+//     int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
+// } TValleyVFH;
+
+// Najdi Valleys
+// TValleyVFH.LSector je bliz i Sector 0
     Valleys.clear();
-    TValleyVFH Valley;
-    for (int i=0; i<Sectors; i++) {
-        Valley.W = -1;
-
+    TValleyVFH Valley,First,Last;
+    bool InObstacle = false;
+    if (VFHisto[0] > ValleyThreshold) { // Obstacle
+        InObstacle = true;
     }
+    First.LSector = -1;
+    First.RSector = -1;
+    First.W = -1;
 
+    Last.LSector = -1;
+    Last.RSector = -1;
+    Last.W = -1;
+
+    Valley.LSector = -1;
+    Valley.RSector = -1;
+    Valley.W = -1;
+    for (int i=0; i<Sectors; i++) {
+        if (InObstacle) {
+            if (VFHisto[i] <= ValleyThreshold) { // Free - konec obstacle
+                Valley.LSector = i;
+                Valley.RSector = -1;
+                Valley.W = -1;
+                InObstacle = false;
+            }
+        }
+        else {
+            if (VFHisto[i] > ValleyThreshold) { // Obstacle - konec free = konec valley
+                Valley.RSector = i;
+                if (Valley.LSector >= 0) {
+                    Valley.W = Valley.RSector - Valley.LSector;
+                }
+                if (Valley.W < 0) {
+                    First.RSector = Valley.RSector;
+                }
+                else {
+                    Valleys.push_back(Valley);
+                }
+                Valley.W = -1;
+                InObstacle = true;
+            }
+        }
+    }
+//     Valleys.push_back(First);
+//     Valleys.push_back(Valley);
+    if ((First.RSector >= 0) && (Valley.LSector >= 0) && (Valley.RSector < 0)) {
+        Valley.RSector = First.RSector;
+        Valley.W = Valley.LSector + Valley.RSector; // Prekrocili jsme nulu -> za zady nejsou prekazky a valley jde pres Sector = 0
+    }
+    Valleys.push_back(Valley);
 }
 
 // ============================================================================

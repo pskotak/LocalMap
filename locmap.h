@@ -50,6 +50,15 @@ extern float HeightFilterAlpha;
 #define CoefB (CoefA / Dmax)
 
 #define CubicHeight
+extern float ValleyThreshold;
+typedef struct {
+    int LSector;
+    int RSector;
+    int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
+} TValleyVFH;
+extern std::vector<TValleyVFH> Valleys;
+extern int AngleToSector(const float AngleRad);
+extern float SectorToAgle(int Sector);
 
 // Flat grid map: Cells - hlavni vystup s binarizovanymi a nafouknutymi prekazkam
 typedef struct {
