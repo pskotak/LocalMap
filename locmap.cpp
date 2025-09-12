@@ -55,9 +55,7 @@ TPoint2DInt PlanGoalIdx;
 // #define AngleResDeg 5
 // #define Sectors (360 / AngleResDeg) // Muai byt cele cislo
 // #define AngleResRad (AngleResDeg * DegRad)
-
 //std::vector<TPoint3D> VFPoints;
-
 typedef struct {
     float x,y,angle;
     int sector;
@@ -72,6 +70,13 @@ float ValleyThreshold = 0.3;
 //     int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
 // } TValleyVFH;
 std::vector<TValleyVFH> Valleys;
+int WideSectors = 10;
+int VFH_GoalSector = -1;
+int VFH_SteeringSector = -1;
+float VFH_GoalAngle = -1.0;
+float VFH_SteeringAngle = -1.0;
+
+bool Inside = false; // TODO DEBUG
 
 int AngleToSector(const float AngleRad) {
     int Sector = std::floor(AngleRad / AngleResRad) + SectorOffs;
@@ -296,32 +301,18 @@ void CalcVFH() { // -----------------------------------------------------------
         VFHisto[i] = V;
     }
 
-
-// typedef struct {
-//     int LSector;
-//     int RSector;
-//     int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
-// } TValleyVFH;
-
 // Najdi Valleys
-// TValleyVFH.LSector je bliz i Sector 0
     Valleys.clear();
-    TValleyVFH Valley,First,Last;
-    bool InObstacle = false;
-    if (VFHisto[0] > ValleyThreshold) { // Obstacle
-        InObstacle = true;
-    }
-    First.LSector = -1;
-    First.RSector = -1;
-    First.W = -1;
-
-    Last.LSector = -1;
-    Last.RSector = -1;
-    Last.W = -1;
+    TValleyVFH Valley;
 
     Valley.LSector = -1;
     Valley.RSector = -1;
     Valley.W = -1;
+    bool InObstacle = true;
+    if (VFHisto[0] <= ValleyThreshold) { // Obstacle
+        InObstacle = false;
+        Valley.LSector = 0;
+    }
     for (int i=0; i<Sectors; i++) {
         if (InObstacle) {
             if (VFHisto[i] <= ValleyThreshold) { // Free - konec obstacle
@@ -337,24 +328,75 @@ void CalcVFH() { // -----------------------------------------------------------
                 if (Valley.LSector >= 0) {
                     Valley.W = Valley.RSector - Valley.LSector;
                 }
-                if (Valley.W < 0) {
-                    First.RSector = Valley.RSector;
-                }
-                else {
-                    Valleys.push_back(Valley);
-                }
+                Valleys.push_back(Valley);
+                Valley.LSector = -1;
+                Valley.RSector = -1;
                 Valley.W = -1;
                 InObstacle = true;
             }
         }
     }
-//     Valleys.push_back(First);
-//     Valleys.push_back(Valley);
-    if ((First.RSector >= 0) && (Valley.LSector >= 0) && (Valley.RSector < 0)) {
-        Valley.RSector = First.RSector;
-        Valley.W = Valley.LSector + Valley.RSector; // Prekrocili jsme nulu -> za zady nejsou prekazky a valley jde pres Sector = 0
+    if (Valley.LSector >= 0) {
+        Valley.RSector = Sectors-1;
+        Valley.W = Valley.RSector - Valley.LSector;
+        Valleys.push_back(Valley);
     }
-    Valleys.push_back(Valley);
+// Najdi Valley pro VFH_GoalSector
+    int MinL = Sectors+100, LIdx = -1, MinR = Sectors+100, RIdx = -1,W,LL,RR;
+    Inside = false;
+    VFH_SteeringSector = -1;
+    VFH_SteeringAngle = -1.0;
+    bool Found = false;
+    if (VFH_GoalSector >= 0) {
+        for (int i=0; i < Valleys.size(); i++) {
+            Valley = Valleys[i];
+            if (Valley.W >= 0) {
+                Found = true;
+                if ((Valley.LSector <= VFH_GoalSector) && (Valley.RSector >= VFH_GoalSector)) {
+                    Inside = true;
+                    break;
+                }
+                else {
+                    LL = abs(VFH_GoalSector-Valley.LSector);
+                    if (LL < MinL) {
+                        MinL = LL;
+                        LIdx = i;
+                    }
+                    RR = abs(Valley.RSector - VFH_GoalSector);
+                    if (RR < MinR) {
+                        MinR = RR;
+                        RIdx = i;
+                    }
+                }
+            }
+        }
+    }
+    if (Found) {
+        if (!Inside) {
+            if (MinL < MinR) {
+                Valley = Valleys[LIdx];
+            }
+            else {
+                Valley = Valleys[RIdx];
+            }
+        }
+        W = Valley.RSector - Valley.LSector;
+        if (W >= WideSectors) {
+            if ((Valley.RSector - VFH_GoalSector) > (VFH_GoalSector - Valley.LSector)) {
+                VFH_SteeringSector = Valley.LSector + (WideSectors / 2);
+            }
+            else {
+                VFH_SteeringSector = Valley.RSector - (WideSectors / 2);
+            }
+        }
+        else {
+            VFH_SteeringSector = Valley.LSector + (W / 2);
+        }
+    }
+
+    if (VFH_SteeringSector >= 0) {
+        VFH_SteeringAngle = SectorToAgle(VFH_SteeringSector);
+    }
 }
 
 // ============================================================================

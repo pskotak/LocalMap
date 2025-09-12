@@ -5,7 +5,7 @@
 
 namespace locmap {
 
-#define LocMapVersion "1.0.2"
+#define LocMapVersion "1.0.3"
 
 // Point cloud
 extern int LocmapPC_start;
@@ -57,6 +57,13 @@ typedef struct {
     int W; // Sirka valley [sectors]. Pokud je <= 0, je to "neplatne valley" a bude ignorovano
 } TValleyVFH;
 extern std::vector<TValleyVFH> Valleys;
+extern int WideSectors;
+extern int VFH_GoalSector;
+extern int VFH_SteeringSector;
+extern float VFH_GoalAngle;
+extern float VFH_SteeringAngle;
+extern bool Inside; // TODO DEBUG
+
 extern int AngleToSector(const float AngleRad);
 extern float SectorToAgle(int Sector);
 
